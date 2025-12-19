@@ -1,0 +1,20 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --charcoal: #0A0A0A;
+  --boxing-red: #DC2626;
+  --champion-gold: #F59E0B;
+}
+
+body {
+  background-color: var(--charcoal);
+  color: #ffffff;
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}
