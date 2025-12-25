@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import { streamText } from 'ai';
+import { z } from 'zod';
 import { createLeadMagnetPrompt, type CoachingContext } from '@/lib/openrouter';
 import { searchVideos } from '@/lib/video-search';
 
@@ -73,34 +74,16 @@ export async function POST(request: NextRequest) {
       tools: {
         search_video_library: {
           description: 'Search the video library for relevant boxing technique videos. Use this when the user asks about specific techniques, wants to see demonstrations, or needs video recommendations.',
-          parameters: {
-            type: 'object',
-            properties: {
-              category: {
-                type: 'string',
-                enum: ['Technique', 'Tactics', 'Training', 'Mindset'],
-                description: 'The main category of boxing content',
-              },
-              subtopic: {
-                type: 'string',
-                description: 'Specific technique or topic (e.g., "Jab", "Footwork", "Combination", "Distance")',
-              },
-              tags: {
-                type: 'array',
-                items: { type: 'string' },
-                description: 'Relevant tags to search for (e.g., ["orthodox", "power", "speed"])',
-              },
-              limit: {
-                type: 'number',
-                description: 'Maximum number of videos to return (default: 3)',
-                default: 3,
-              },
-            },
-          },
-          execute: async (args: any) => {
+          inputSchema: z.object({
+            category: z.enum(['Technique', 'Tactics', 'Training', 'Mindset']).optional().describe('The main category of boxing content'),
+            subtopic: z.string().optional().describe('Specific technique or topic (e.g., "Jab", "Footwork", "Combination", "Distance")'),
+            tags: z.array(z.string()).optional().describe('Relevant tags to search for (e.g., ["orthodox", "power", "speed"])'),
+            limit: z.number().optional().describe('Maximum number of videos to return'),
+          }),
+          execute: async (args) => {
             try {
               const videos = await searchVideos({
-                category: args.category,
+                category: args.category as 'Technique' | 'Tactics' | 'Training' | 'Mindset' | undefined,
                 subtopic: args.subtopic,
                 tags: args.tags,
                 limit: args.limit || 3,
@@ -110,7 +93,7 @@ export async function POST(request: NextRequest) {
               console.log('[Coach API] Found videos:', videos.map(v => ({ id: v.video_id, title: v.video_title })));
 
               return {
-                type: 'video_selections',
+                type: 'video_selections' as const,
                 videos: videos.map(v => ({
                   video_id: v.video_id,
                   title: v.video_title,
@@ -122,15 +105,14 @@ export async function POST(request: NextRequest) {
             } catch (error: any) {
               console.error('[Coach API] Video search error:', error);
               return {
-                type: 'video_selections',
-                videos: [],
+                type: 'video_selections' as const,
+                videos: [] as { video_id: string; title: string; topic: string; subtopic: string | null; reason: string }[],
                 error: error.message,
               };
             }
           },
         },
       },
-      maxSteps: 5, // Allow multiple tool calls
     });
 
     return result.toUIMessageStreamResponse();

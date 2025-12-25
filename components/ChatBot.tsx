@@ -184,11 +184,11 @@ export function ChatBot({ sessionId, initialCategory }: ChatBotProps) {
     }),
   });
 
-  const { messages, input, sendMessage, status, error, setMessages, regenerate } = chatHook;
+  const { messages, sendMessage, status, error, setMessages, regenerate } = chatHook;
   
-  // Use setInput from hook if available, otherwise use local state
-  const setInput = (chatHook as any).setInput || setLocalInput;
-  const inputValue = input !== undefined ? input : localInput;
+  // Use local state for input (AI SDK v5 doesn't expose input directly)
+  const setInput = setLocalInput;
+  const inputValue = localInput;
 
   // Load chat history when session changes and update messages
   useEffect(() => {
@@ -215,7 +215,7 @@ export function ChatBot({ sessionId, initialCategory }: ChatBotProps) {
     }
   }, [sessionId, setMessages]);
 
-  const isLoading = status === 'streaming' || status === 'submitted';
+  const isLoading = status !== 'ready' && status !== 'error';
 
   // Auto-scroll to bottom when messages change
   useEffect(() => {
@@ -530,7 +530,7 @@ export function ChatBot({ sessionId, initialCategory }: ChatBotProps) {
                   <div className="flex items-center gap-2 mt-3 pt-3 border-t border-gray-700/50">
                     <button
                       onClick={() => handleRegenerate(msg.id)}
-                      disabled={isLoading || status === 'streaming'}
+                      disabled={isLoading}
                       className="flex items-center gap-1.5 px-2 py-1.5 rounded-md text-xs text-gray-400 hover:text-white hover:bg-gray-700/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                       title="Rerun message"
                     >
@@ -562,7 +562,7 @@ export function ChatBot({ sessionId, initialCategory }: ChatBotProps) {
                   msg.role === 'user' ? 'text-white/60' : 'text-gray-500'
                 }`}>
                   <Clock className="w-3 h-3" />
-                  <span>{formatTimestamp(msg.createdAt)}</span>
+                  <span>{formatTimestamp((msg as any).createdAt || new Date())}</span>
                 </div>
               </div>
             </div>

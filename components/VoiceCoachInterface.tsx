@@ -131,7 +131,7 @@ export function VoiceCoachInterface() {
       
       // Create audio buffer
       const audioBuffer = ctx.createBuffer(1, floatData.length, 24000);
-      audioBuffer.copyToChannel(floatData, 0);
+      audioBuffer.copyToChannel(floatData as Float32Array<ArrayBuffer>, 0);
       
       // Create source node
       const source = ctx.createBufferSource();
