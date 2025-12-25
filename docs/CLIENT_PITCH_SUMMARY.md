@@ -37,6 +37,65 @@ Your audience wants to learn from a 7-0 professional boxer, but they can't affor
 
 **This Build Stands Alone:** You could launch just this and start capturing leads tomorrow.
 
+### How It Works (Flow Diagram)
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    VISITOR LANDS ON PAGE                     │
+│              "Get Your Free Training Plan"                   │
+└──────────────────────┬──────────────────────────────────────┘
+                       │
+                       ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    FILL OUT ASSESSMENT FORM                  │
+│  • Experience Level (Beginner/Intermediate/Pro)              │
+│  • Stance (Orthodox/Southpaw/Switch)                        │
+│  • Training Location (Gym/Home)                             │
+│  • Equipment Available                                       │
+│  • Time Constraints                                          │
+│  • Specific Goals/Questions                                  │
+└──────────────────────┬──────────────────────────────────────┘
+                       │
+                       ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    AI GENERATES PLAN                         │
+│  • Processes form data ($0.0006 cost)                       │
+│  • Creates personalized coaching plan                       │
+│  • Includes video recommendations                            │
+│  • Generates structured training schedule                   │
+└──────────────────────┬──────────────────────────────────────┘
+                       │
+                       ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    USER RECEIVES VALUE                       │
+│  • Instant PDF download                                      │
+│  • $50-100 worth of coaching                                 │
+│  • Personalized to their needs                               │
+└──────────────────────┬──────────────────────────────────────┘
+                       │
+                       ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    YOU CAPTURE LEAD                          │
+│  • Email address saved                                       │
+│  • User context stored                                       │
+│  • Pre-qualified (they filled out detailed form)            │
+│  • Warm lead ready for conversion                            │
+└──────────────────────┬──────────────────────────────────────┘
+                       │
+                       ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    NATURAL UPSELL PATH                       │
+│  • "Want more detailed coaching? Try Pro"                    │
+│  • "Want to discuss this plan? Book voice session"           │
+│  • "Want weekly updates? Join community"                     │
+└─────────────────────────────────────────────────────────────┘
+
+VALUE EXCHANGE:
+User gets: $50-100 coaching plan (instant)
+You get: Qualified lead + email ($0.0006 cost)
+ROI: 41,328% if 1% convert to $29/month
+```
+
 ---
 
 ## Product Build #2: The 24/7 Boxing Coach
@@ -67,6 +126,62 @@ Your audience wants to learn from a 7-0 professional boxer, but they can't affor
 - Data on what users struggle with most
 
 **This Build Stands Alone:** Launch this as a subscription product and you have a recurring revenue stream.
+
+### How It Works (Flow Diagram)
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    USER HAS A QUESTION                      │
+│         "How do I improve my jab technique?"                │
+└──────────────────────┬──────────────────────────────────────┘
+                       │
+                       ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    AI PROCESSES REQUEST                     │
+│  • Analyzes question ($0.0002 per message)                  │
+│  • Considers user's stance, experience, history             │
+│  • Searches video library for relevant content              │
+│  • Generates personalized response                          │
+└──────────────────────┬──────────────────────────────────────┘
+                       │
+                       ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    STREAMING RESPONSE                       │
+│  • Real-time token streaming                                │
+│  • Immediate feedback (no waiting)                          │
+│  • Personalized to user's context                           │
+│  • Includes video recommendations                           │
+└──────────────────────┬──────────────────────────────────────┘
+                       │
+                       ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    INTERACTIVE FOLLOW-UPS                    │
+│  • "Show me jab drills" button                              │
+│  • "Watch video demonstration" button                       │
+│  • "Explain footwork connection" button                     │
+│  • Natural conversation flow                                 │
+└──────────────────────┬──────────────────────────────────────┘
+                       │
+                       ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    HABIT FORMATION                          │
+│  • User comes back daily                                     │
+│  • Builds trust and loyalty                                  │
+│  • Sees you as go-to resource                                │
+│  • Higher lifetime value                                      │
+└─────────────────────────────────────────────────────────────┘
+
+CONVERSATION EXAMPLE:
+User: "How do I improve my jab?"
+AI: "For you as a southpaw, focus on rotating your lead shoulder..."
+     [Shows 3 video recommendations]
+     [Buttons: "Show drills" | "Watch video" | "Explain more"]
+
+COST STRUCTURE:
+200 messages/month × $0.0002 = $0.04/user
+Charge: $9.99/month
+Margin: 99.6%
+```
 
 ---
 
@@ -99,6 +214,66 @@ Your audience wants to learn from a 7-0 professional boxer, but they can't affor
 
 **This Build Stands Alone:** This is your premium tier - launch it as a $29/month subscription.
 
+### How It Works (Flow Diagram)
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    USER CLICKS "CONNECT"                     │
+│              Grants microphone permission                    │
+└──────────────────────┬──────────────────────────────────────┘
+                       │
+                       ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    REAL-TIME VOICE STREAM                    │
+│  • User speaks naturally                                   │
+│  • Audio streams to Gemini Live API                         │
+│  • AI processes in real-time                                │
+│  • Context maintained throughout conversation               │
+└──────────────────────┬──────────────────────────────────────┘
+                       │
+                       ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    AI RESPONDS WITH VOICE                    │
+│  • Natural British accent (Freya Mills)                     │
+│  • Emotional connection through voice                        │
+│  • Personalized coaching advice                             │
+│  • Real-time transcription shown                            │
+└──────────────────────┬──────────────────────────────────────┘
+                       │
+                       ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    NATURAL CONVERSATION                      │
+│  • Interruptions handled naturally                           │
+│  • Follow-up questions flow naturally                        │
+│  • Context remembered throughout session                     │
+│  • Feels like talking to real coach                          │
+└──────────────────────┬──────────────────────────────────────┘
+                       │
+                       ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    SESSION ENDS                             │
+│  • Generate PDF summary option                              │
+│  • Key points extracted automatically                       │
+│  • Action items identified                                   │
+│  • Downloadable coaching plan                                │
+└─────────────────────────────────────────────────────────────┘
+
+CONVERSATION EXAMPLE:
+User: "I'm struggling with my footwork during sparring"
+AI: [Voice] "Right then, let's break this down. When you're in 
+     the ring, your footwork needs to be reactive, not 
+     predictive. Are you finding you're getting caught flat-
+     footed, or is it more about positioning?"
+User: "Yeah, flat-footed mostly"
+AI: [Voice] "Brilliant, that's a common issue. The key is..."
+
+COST STRUCTURE:
+10 sessions/month × $0.25 = $2.50/user
+Charge: $29/month
+Margin: 91%
+Value: $200-400 in private coaching
+```
+
 ---
 
 ## Product Build #4: The Content Library
@@ -129,6 +304,59 @@ Your audience wants to learn from a 7-0 professional boxer, but they can't affor
 - Content that works while you sleep
 
 **This Build Stands Alone:** This could be a freemium tier that drives upgrades to paid coaching.
+
+### How It Works (Flow Diagram)
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    USER SEARCHES/BROWses                     │
+│         "southpaw jab technique" or browse by category       │
+└──────────────────────┬──────────────────────────────────────┘
+                       │
+                       ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    SEMANTIC SEARCH                           │
+│  • Searches 600+ video library                               │
+│  • Matches by topic, subtopic, tags                         │
+│  • Ranks by relevance                                        │
+│  • Returns top results                                       │
+└──────────────────────┬──────────────────────────────────────┘
+                       │
+                       ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    VIDEO RESULTS DISPLAY                     │
+│  • Thumbnails with titles                                    │
+│  • Category badges (Technique/Tactics/Training/Mindset)      │
+│  • Tags (orthodox, southpaw, power, etc.)                   │
+│  • View counts and engagement metrics                        │
+└──────────────────────┬──────────────────────────────────────┘
+                       │
+                       ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    USER WATCHES VIDEO                        │
+│  • YouTube player embedded                                   │
+│  • Can start at specific timestamps                          │
+│  • Full-screen support                                       │
+│  • Seamless playback                                         │
+└──────────────────────┬──────────────────────────────────────┘
+                       │
+                       ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    ENGAGEMENT & CONVERSION                    │
+│  • User spends 10-20 minutes per visit                       │
+│  • Sees your expertise (600+ videos = authority)             │
+│  • Natural path to paid coaching                              │
+│  • SEO value (searchable content)                             │
+└─────────────────────────────────────────────────────────────┘
+
+USER JOURNEY:
+Search "jab technique" → See 5 relevant videos → Watch 2-3 
+→ Learn technique → Want personalized coaching → Upgrade to Pro
+
+VALUE PROPOSITION:
+User gets: $500+ worth of premium content (free)
+You get: Authority positioning + engagement + conversion path
+```
 
 ---
 
@@ -161,6 +389,60 @@ Your audience wants to learn from a 7-0 professional boxer, but they can't affor
 
 **This Build Stands Alone:** This is your sales page foundation - every visitor should see this.
 
+### How It Works (Flow Diagram)
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    VISITOR LANDS ON PAGE                     │
+│              First impression of your brand                   │
+└──────────────────────┬──────────────────────────────────────┘
+                       │
+                       ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    CREDIBILITY ESTABLISHED                   │
+│  • "7-0 Professional Boxer"                                  │
+│  • "National Champion"                                        │
+│  • "20+ Years Experience"                                    │
+│  • Visual proof of expertise                                  │
+└──────────────────────┬──────────────────────────────────────┘
+                       │
+                       ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    PHILOSOPHY INTRODUCED                     │
+│  • Five Boxing Philosophies explained                        │
+│  • Teaching approach described                               │
+│  • "Value of Looks" philosophy                               │
+│  • What makes you different                                  │
+└──────────────────────┬──────────────────────────────────────┘
+                       │
+                       ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    TRUST BUILT                               │
+│  • User understands your qualifications                      │
+│  • User knows your teaching style                            │
+│  • User believes you're worth listening to                   │
+│  • Pre-qualified before they even try product                │
+└──────────────────────┬──────────────────────────────────────┘
+                       │
+                       ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    CONVERSION PATH                           │
+│  • Higher conversion rates (trust = sales)                   │
+│  • Lower refund requests                                     │
+│  • Better user expectations                                  │
+│  • Authority that competitors can't match                    │
+└─────────────────────────────────────────────────────────────┘
+
+PSYCHOLOGY:
+Before: "Who is this person? Should I trust them?"
+After: "This is a real professional. I should listen."
+
+IMPACT:
+2-3x higher conversion rates
+Reduced refund requests
+Better user expectations
+```
+
 ---
 
 ## Product Build #6: The Conversion Hub
@@ -191,6 +473,61 @@ Your audience wants to learn from a 7-0 professional boxer, but they can't affor
 - Foundation for all your marketing
 
 **This Build Stands Alone:** This is your marketing foundation - every ad should lead here.
+
+### How It Works (Flow Diagram)
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    VISITOR ARRIVES                           │
+│         (From ad, search, social media, etc.)                 │
+└──────────────────────┬──────────────────────────────────────┘
+                       │
+                       ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    IMMEDIATE VALUE PROP                      │
+│  • "Train with Matt Goddard"                                 │
+│  • "7-0 Pro, National Champion"                              │
+│  • "20+ Years Experience"                                    │
+│  • Clear, compelling headline                                │
+└──────────────────────┬──────────────────────────────────────┘
+                       │
+                       ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    THREE CLEAR PATHS                         │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐     │
+│  │  Voice Coach │  │   AI Coach   │  │     Chat     │     │
+│  │  $29/month   │  │  Lead Magnet │  │  $9.99/month │     │
+│  │  Premium     │  │  Free PDF    │  │  Unlimited   │     │
+│  └──────────────┘  └──────────────┘  └──────────────┘     │
+└──────────────────────┬──────────────────────────────────────┘
+                       │
+                       ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    USER CHOOSES PATH                         │
+│  • Based on their immediate need                             │
+│  • Clear value proposition for each                          │
+│  • No confusion, immediate clarity                           │
+│  • Natural progression to conversion                         │
+└──────────────────────┬──────────────────────────────────────┘
+                       │
+                       ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    ENGAGEMENT & CONVERSION                    │
+│  • Lower bounce rates (people understand value)              │
+│  • Higher engagement (clear paths)                           │
+│  • Better user experience = better retention                 │
+│  • Foundation for all marketing                              │
+└─────────────────────────────────────────────────────────────┘
+
+CONVERSION FUNNEL:
+Landing → See Value → Choose Path → Engage → Convert
+
+KEY METRICS:
+• 30-50% higher engagement (clear value prop)
+• Lower bounce rates
+• Better user experience
+• Foundation for all marketing campaigns
+```
 
 ---
 

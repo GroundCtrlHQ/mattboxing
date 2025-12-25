@@ -4,7 +4,7 @@ import { join } from 'path';
 
 export async function GET() {
   try {
-    const faqPath = join(process.cwd(), 'MATT_GODDARD_FAQ.md');
+    const faqPath = join(process.cwd(), 'docs/features/MATT_GODDARD_FAQ.md');
     const faqContent = readFileSync(faqPath, 'utf-8');
     
     // Return first 8000 characters to avoid token limits

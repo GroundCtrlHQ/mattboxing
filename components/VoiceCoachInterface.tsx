@@ -305,10 +305,22 @@ export function VoiceCoachInterface() {
 
       // 1. Get FAQ content
       console.log('[Voice] Fetching FAQ content...');
-      const faqResponse = await fetch('/api/voice/faq');
-      console.log('[Voice] FAQ response status:', faqResponse.status);
-      const { content: faqContent } = await faqResponse.json();
-      console.log('[Voice] FAQ content loaded, length:', faqContent.length);
+      let faqContent = '';
+      try {
+        const faqResponse = await fetch('/api/voice/faq');
+        console.log('[Voice] FAQ response status:', faqResponse.status);
+        if (faqResponse.ok) {
+          const data = await faqResponse.json();
+          faqContent = data.content || '';
+          console.log('[Voice] FAQ content loaded, length:', faqContent.length);
+        } else {
+          console.warn('[Voice] FAQ fetch failed, using fallback');
+          faqContent = 'Matt Goddard is a 7-0 professional boxer and National Champion with 20+ years of ring experience.';
+        }
+      } catch (error) {
+        console.error('[Voice] Error loading FAQ:', error);
+        faqContent = 'Matt Goddard is a 7-0 professional boxer and National Champion with 20+ years of ring experience.';
+      }
 
       // 2. Get Ephemeral Token
       console.log('[Voice] Fetching ephemeral token...');
@@ -329,11 +341,11 @@ export function VoiceCoachInterface() {
 
       const systemInstruction = `You are Freya Mills - a British boxing coach. Be warm, direct, and natural. Use British expressions like "brilliant", "lovely", "right then".
 
-Keep responses SHORT and conversational - like a real gym chat. No planning text.
+Give helpful, complete responses - not too short, not too long. Like a real gym conversation. No planning text or thinking out loud.
 
 You can generate a coaching plan when asked - use 'generate_coaching_plan' tool.
 
-Background: ${faqContent.substring(0, 400)}`;
+Background: ${faqContent ? faqContent.substring(0, 400) : 'Matt Goddard is a 7-0 professional boxer and National Champion with 20+ years of ring experience.'}`;
 
       const session = await ai.live.connect({
         model: model,
@@ -347,14 +359,11 @@ Background: ${faqContent.substring(0, 400)}`;
               }
             }
           },
-          // Enable automatic VAD for faster turn detection
+          // Enable automatic VAD - balanced for natural conversation
           realtimeInputConfig: {
             automaticActivityDetection: {
               disabled: false,
-              startOfSpeechSensitivity: 'START_SENSITIVITY_HIGH',
-              endOfSpeechSensitivity: 'END_SENSITIVITY_HIGH',
-              prefixPaddingMs: 100,
-              silenceDurationMs: 500, // Faster - detect end of speech after 500ms silence
+              // Use numeric values: sensitivity 0.0-1.0, duration in seconds
             }
           },
           tools: [generatePlanTool]
