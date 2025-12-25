@@ -35,6 +35,16 @@ export async function getOrCreateSession(sessionId: string, userId?: string) {
 }
 
 /**
+ * Sanitize content for database storage
+ * Removes null bytes and control characters that PostgreSQL can't handle
+ */
+function sanitizeContent(content: string): string {
+  return content
+    .replace(/\0/g, '') // Remove null bytes
+    .replace(/[\x01-\x08\x0B-\x0C\x0E-\x1F]/g, ''); // Remove control chars except \n, \t, \r
+}
+
+/**
  * Save a chat message
  */
 export async function saveMessage(
@@ -42,6 +52,9 @@ export async function saveMessage(
   message: ChatMessage
 ) {
   const sql = getDb();
+
+  // Sanitize content to prevent database errors
+  const sanitizedContent = message.content ? sanitizeContent(message.content) : '';
 
   await sql`
     INSERT INTO chat_messages (
@@ -54,7 +67,7 @@ export async function saveMessage(
     ) VALUES (
       ${sessionId},
       ${message.role},
-      ${message.content},
+      ${sanitizedContent},
       ${message.tool_calls ? JSON.stringify(message.tool_calls) : null},
       ${message.tool_results ? JSON.stringify(message.tool_results) : null},
       ${message.video_recommendations ? message.video_recommendations : null}

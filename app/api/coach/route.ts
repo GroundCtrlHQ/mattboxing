@@ -1,40 +1,141 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCoachingResponse, type CoachingContext, type ChatMessage } from '@/lib/openrouter';
+import { createOpenRouter } from '@openrouter/ai-sdk-provider';
+import { streamText, convertToModelMessages } from 'ai';
+import { createLeadMagnetPrompt, type CoachingContext } from '@/lib/openrouter';
+import { searchVideos } from '@/lib/video-search';
 
-export const runtime = 'nodejs'; // Required for streaming
+export const runtime = 'nodejs';
+export const maxDuration = 60; // Increased for tool calls
+
+// Initialize OpenRouter provider
+const openrouter = createOpenRouter({
+  apiKey: process.env.OPENROUTER_API_KEY,
+});
+
+// System prompt for lead magnet coaching (structured JSON output)
+const leadMagnetSystemPrompt = `You are Matt Goddard, "The Boxing Locker" - a 7-0 professional boxer and National Champion. You provide comprehensive, actionable coaching for beginners in a direct, motivational style.
+
+RESPONSE FORMAT:
+Provide a complete, actionable coaching response that covers technique, drills, and mindset. Then ALWAYS end with a JSON block:
+
+\`\`\`json
+{
+  "response": "Complete coaching response text here",
+  "video_recommendations": [
+    {"video_id": "video_id_here", "title": "Video Title", "reason": "Why this video helps"}
+  ]
+}
+\`\`\`
+
+JSON RULES:
+- Always generate valid JSON
+- video_recommendations: 1-3 videos based on coaching context
+- CRITICAL: Only use video_id values that were returned by the search_video_library tool - check the tool output and use those exact video_id values
+- Do NOT invent or make up video IDs - only use IDs from the tool results
+- If no videos were found by the tool, omit video_recommendations entirely
+
+Provide comprehensive, fundamentals-focused coaching that beginners can immediately apply. This is a lead magnet - focus on delivering value, not follow-up actions.`;
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { messages, context } = body as {
-      messages: Array<{ role: string; content: string }>;
+    const { messages, context, isLeadMagnet } = body as {
+      messages?: Array<{ role: string; parts?: Array<{ type: string; text?: string }>; content?: string }>;
       context?: CoachingContext;
+      isLeadMagnet?: boolean;
     };
 
-    if (!messages || messages.length === 0) {
+    // Handle both useChat format (with parts) and direct format (with content)
+    let modelMessages;
+    if (messages && messages.length > 0) {
+      // Convert useChat format to ModelMessage
+      modelMessages = await convertToModelMessages(
+        messages.map(msg => ({
+          role: msg.role as 'user' | 'assistant' | 'system',
+          parts: msg.parts || (msg.content ? [{ type: 'text' as const, text: msg.content }] : []),
+        }))
+      );
+    } else {
       return NextResponse.json(
         { error: 'Messages are required' },
         { status: 400 }
       );
     }
 
-    // Convert to ChatMessage format
-    const chatMessages: ChatMessage[] = messages.map(msg => ({
-      role: msg.role as 'user' | 'assistant' | 'system',
-      content: msg.content,
-    }));
+    // For lead magnet, use the structured JSON prompt instead of Output.object()
+    const systemPrompt = isLeadMagnet
+      ? leadMagnetSystemPrompt
+      : createLeadMagnetPrompt(context); // Fallback
 
-    // Stream the response directly - tools are handled in getCoachingResponse
-    const response = await getCoachingResponse(chatMessages, context);
-    
-    return new Response(response.body, {
-      headers: {
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
-        'Connection': 'keep-alive',
-        'X-Accel-Buffering': 'no',
+    // Stream response with tool support (like chat API)
+    const result = streamText({
+      model: openrouter('google/gemini-2.5-flash'),
+      system: systemPrompt,
+      messages: modelMessages,
+      tools: {
+        search_video_library: {
+          description: 'Search the video library for relevant boxing technique videos. Use this when the user asks about specific techniques, wants to see demonstrations, or needs video recommendations.',
+          parameters: {
+            type: 'object',
+            properties: {
+              category: {
+                type: 'string',
+                enum: ['Technique', 'Tactics', 'Training', 'Mindset'],
+                description: 'The main category of boxing content',
+              },
+              subtopic: {
+                type: 'string',
+                description: 'Specific technique or topic (e.g., "Jab", "Footwork", "Combination", "Distance")',
+              },
+              tags: {
+                type: 'array',
+                items: { type: 'string' },
+                description: 'Relevant tags to search for (e.g., ["orthodox", "power", "speed"])',
+              },
+              limit: {
+                type: 'number',
+                description: 'Maximum number of videos to return (default: 3)',
+                default: 3,
+              },
+            },
+          },
+          execute: async (args: any) => {
+            try {
+              const videos = await searchVideos({
+                category: args.category,
+                subtopic: args.subtopic,
+                tags: args.tags,
+                limit: args.limit || 3,
+              });
+
+              // Log video IDs for debugging
+              console.log('[Coach API] Found videos:', videos.map(v => ({ id: v.video_id, title: v.video_title })));
+
+              return {
+                type: 'video_selections',
+                videos: videos.map(v => ({
+                  video_id: v.video_id,
+                  title: v.video_title,
+                  topic: v.topic,
+                  subtopic: v.subtopic,
+                  reason: `Relevant video for ${args.subtopic || args.category || 'boxing technique'}`,
+                })),
+              };
+            } catch (error: any) {
+              console.error('[Coach API] Video search error:', error);
+              return {
+                type: 'video_selections',
+                videos: [],
+                error: error.message,
+              };
+            }
+          },
+        },
       },
+      maxSteps: 5, // Allow multiple tool calls
     });
+
+    return result.toUIMessageStreamResponse();
   } catch (error: any) {
     console.error('[Coach API] Error:', error);
     const errorMessage = error.message || 'Failed to get coaching response';

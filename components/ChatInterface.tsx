@@ -27,7 +27,17 @@ interface ChatInterfaceProps {
 export function ChatInterface({ initialSessionId, sessions: initialSessions }: ChatInterfaceProps) {
   const router = useRouter();
   const pathname = usePathname();
-  const [sessions, setSessions] = useState<ChatSession[]>(initialSessions);
+  
+  // Parse dates from API response
+  const parseSessions = (sessions: any[]): ChatSession[] => {
+    return sessions.map(s => ({
+      ...s,
+      created_at: s.created_at ? new Date(s.created_at) : new Date(),
+      updated_at: s.updated_at ? new Date(s.updated_at) : new Date(),
+    }));
+  };
+
+  const [sessions, setSessions] = useState<ChatSession[]>(parseSessions(initialSessions));
   const [isLoadingSessions, setIsLoadingSessions] = useState(false);
   
   // Extract sessionId from URL
@@ -50,15 +60,15 @@ export function ChatInterface({ initialSessionId, sessions: initialSessions }: C
         const response = await fetch('/api/chat?getAll=true');
         if (response.ok) {
           const data = await response.json();
-          setSessions(data.sessions || []);
+          setSessions(parseSessions(data.sessions || []));
         } else {
           // Fallback to initial sessions if API fails
-          setSessions(initialSessions);
+          setSessions(parseSessions(initialSessions));
         }
       } catch (error) {
         console.error('Failed to refresh sessions:', error);
         // Fallback to initial sessions on error
-        setSessions(initialSessions);
+        setSessions(parseSessions(initialSessions));
       } finally {
         setIsLoadingSessions(false);
       }
@@ -86,7 +96,7 @@ export function ChatInterface({ initialSessionId, sessions: initialSessions }: C
       const response = await fetch('/api/chat?getAll=true');
       if (response.ok) {
         const data = await response.json();
-        setSessions(data.sessions || []);
+        setSessions(parseSessions(data.sessions || []));
       }
     } catch (error) {
       console.error('Failed to refresh sessions:', error);
@@ -115,10 +125,38 @@ export function ChatInterface({ initialSessionId, sessions: initialSessions }: C
   // Format session title
   const getSessionTitle = (session: ChatSession) => {
     if (session.first_message) {
-      const preview = session.first_message.substring(0, 40);
-      return preview.length < session.first_message.length ? `${preview}...` : preview;
+      return session.first_message;
     }
     return 'New Chat';
+  };
+
+  // Format date for display
+  const formatDate = (date: Date | string) => {
+    const dateObj = typeof date === 'string' ? new Date(date) : date;
+    if (!dateObj || isNaN(dateObj.getTime())) return 'Recently';
+    
+    const now = new Date();
+    const diffMs = now.getTime() - dateObj.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+    
+    if (diffMins < 1) return 'Just now';
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    if (diffDays === 1) return 'Yesterday';
+    if (diffDays < 7) return `${diffDays}d ago`;
+    
+    // For older dates, show the actual date
+    const month = dateObj.toLocaleDateString('en-US', { month: 'short' });
+    const day = dateObj.getDate();
+    const year = dateObj.getFullYear();
+    const currentYear = now.getFullYear();
+    
+    if (year === currentYear) {
+      return `${month} ${day}`;
+    }
+    return `${month} ${day}, ${year}`;
   };
 
   return (
@@ -145,24 +183,24 @@ export function ChatInterface({ initialSessionId, sessions: initialSessions }: C
                 key={session.session_id}
                 onClick={() => navigateToSession(session.session_id)}
                 className={cn(
-                  'group relative flex items-center gap-2 p-3 rounded-lg cursor-pointer transition-colors',
+                  'group relative flex items-start gap-2 p-3 rounded-lg cursor-pointer transition-colors',
                   currentSessionId === session.session_id
                     ? 'bg-boxing-red/20 border border-boxing-red/30'
                     : 'hover:bg-gray-800'
                 )}
               >
-                <MessageSquare className="w-4 h-4 flex-shrink-0 text-gray-400" />
+                <MessageSquare className="w-4 h-4 flex-shrink-0 text-gray-400 mt-0.5" />
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-white truncate">
+                  <p className="text-xs font-medium text-white break-words leading-relaxed">
                     {getSessionTitle(session)}
                   </p>
-                  <p className="text-xs text-gray-400">
-                    {session.message_count} messages
+                  <p className="text-xs text-gray-400 mt-1">
+                    {formatDate(session.updated_at || session.created_at)}
                   </p>
                 </div>
                 <button
                   onClick={(e) => deleteSession(session.session_id, e)}
-                  className="opacity-0 group-hover:opacity-100 p-1 hover:bg-gray-700 rounded transition-opacity"
+                  className="opacity-0 group-hover:opacity-100 p-1 hover:bg-gray-700 rounded transition-opacity flex-shrink-0"
                   title="Delete session"
                 >
                   <Trash2 className="w-3 h-3 text-gray-400 hover:text-boxing-red" />

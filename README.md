@@ -9,7 +9,7 @@
 - **🤖 AI Chat Coach**: Interactive chat interface powered by Claude 3.5 Sonnet, delivering Matt's technical, British coaching voice with biomechanical insights
 - **📹 Video Library**: Curated collection of 600+ boxing technique videos with intelligent search and recommendations
 - **📋 Form-Based Coaching**: Structured coaching requests covering Technique, Tactics, Training, and Mindset
-- **🎯 Personalized Guidance**: Stance-aware coaching (Orthodox/Southpaw/Switch) tailored to user experience level
+- **🎯 Personalised Guidance**: Stance-aware coaching (Orthodox/Southpaw/Switch) tailored to user experience level
 - **🔗 Video Integration**: AI automatically recommends relevant videos with specific timestamps for technique demonstrations
 
 ## ✨ Key Features

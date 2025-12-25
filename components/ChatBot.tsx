@@ -3,7 +3,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useChat } from '@ai-sdk/react';
 import { DefaultChatTransport } from 'ai';
-import { Send, Loader2, MessageSquare, Video, Sparkles, Clock, Play, CheckCircle, XCircle, HelpCircle } from 'lucide-react';
+import { Send, Loader2, MessageSquare, Video, Sparkles, Clock, Play, CheckCircle, XCircle, HelpCircle, RefreshCcw, Copy, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { VideoPlayer } from './VideoPlayer';
@@ -109,7 +109,9 @@ function parseTextAndJson(parts: any[]): {
       // Remove JSON block from displayed text
       cleanText = rawText.replace(/```json[\s\S]*?```/, '').trim();
     } catch (e) {
-      console.log('[v0] Failed to parse JSON from response:', e);
+      console.error('[v0] Failed to parse JSON from response:', e);
+      console.error('[v0] JSON string was:', jsonMatch[1]);
+      // If JSON parsing fails, still try to extract actions manually or show error
     }
   }
   
@@ -165,6 +167,7 @@ export function ChatBot({ sessionId, initialCategory }: ChatBotProps) {
   const [revealedQuizzes, setRevealedQuizzes] = useState<Set<string>>(new Set());
   const [messageVideos, setMessageVideos] = useState<Record<string, VideoResult[]>>({});
   const [isLoadingHistory, setIsLoadingHistory] = useState(true);
+  const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -181,7 +184,7 @@ export function ChatBot({ sessionId, initialCategory }: ChatBotProps) {
     }),
   });
 
-  const { messages, input, sendMessage, status, error, setMessages } = chatHook;
+  const { messages, input, sendMessage, status, error, setMessages, regenerate } = chatHook;
   
   // Use setInput from hook if available, otherwise use local state
   const setInput = (chatHook as any).setInput || setLocalInput;
@@ -257,7 +260,13 @@ export function ChatBot({ sessionId, initialCategory }: ChatBotProps) {
   // Handle form submission
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const textValue = inputValue || '';
+    let textValue = inputValue || '';
+    
+    // Sanitize: Remove null bytes and problematic control characters
+    textValue = textValue
+      .replace(/\0/g, '') // Remove null bytes
+      .replace(/[\x01-\x08\x0B-\x0C\x0E-\x1F]/g, ''); // Remove control chars except \n, \t, \r
+    
     if (textValue.trim() && !isLoading) {
       sendMessage({ parts: [{ type: 'text', text: textValue }] });
       setInput('');
@@ -303,6 +312,28 @@ export function ChatBot({ sessionId, initialCategory }: ChatBotProps) {
     setRevealedQuizzes(prev => new Set([...prev, msgId]));
   };
 
+  // Handle copy message
+  const handleCopyMessage = async (messageId: string, text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedMessageId(messageId);
+      setTimeout(() => setCopiedMessageId(null), 2000);
+    } catch (error) {
+      console.error('Failed to copy message:', error);
+    }
+  };
+
+  // Handle regenerate message
+  const handleRegenerate = (messageId?: string) => {
+    if (regenerate) {
+      if (messageId) {
+        regenerate({ messageId });
+      } else {
+        regenerate();
+      }
+    }
+  };
+
   return (
     <div className="flex flex-col h-full bg-charcoal overflow-hidden">
       {/* Messages Area */}
@@ -322,32 +353,29 @@ export function ChatBot({ sessionId, initialCategory }: ChatBotProps) {
             <p className="text-gray-400 text-sm mb-6">
               Ask me anything about boxing technique, tactics, training, or mindset.
             </p>
-            <div className="flex flex-wrap gap-2 justify-center">
+            <div className="flex flex-wrap gap-6 justify-center">
               <Button
                 variant="outline"
-                size="sm"
                 onClick={() => handleQuickAction("How do I improve my jab?")}
-                className="text-xs border-boxing-red/30 text-boxing-red hover:bg-boxing-red/10"
+                className="text-lg px-12 py-6 border-2 border-boxing-red/40 text-boxing-red hover:bg-boxing-red hover:text-white hover:border-boxing-red transition-all"
               >
-                <Sparkles className="w-3 h-3 mr-1" />
+                <Sparkles className="w-6 h-6 mr-3" />
                 Improve my jab
               </Button>
               <Button
                 variant="outline"
-                size="sm"
                 onClick={() => handleQuickAction("What's the best footwork drill?")}
-                className="text-xs border-boxing-red/30 text-boxing-red hover:bg-boxing-red/10"
+                className="text-lg px-12 py-6 border-2 border-boxing-red/40 text-boxing-red hover:bg-boxing-red hover:text-white hover:border-boxing-red transition-all"
               >
-                <Sparkles className="w-3 h-3 mr-1" />
+                <Sparkles className="w-6 h-6 mr-3" />
                 Footwork drills
               </Button>
               <Button
                 variant="outline"
-                size="sm"
                 onClick={() => handleQuickAction("Show me knockout combinations")}
-                className="text-xs border-boxing-red/30 text-boxing-red hover:bg-boxing-red/10"
+                className="text-lg px-12 py-6 border-2 border-boxing-red/40 text-boxing-red hover:bg-boxing-red hover:text-white hover:border-boxing-red transition-all"
               >
-                <Video className="w-3 h-3 mr-1" />
+                <Video className="w-6 h-6 mr-3" />
                 Knockout combos
               </Button>
             </div>
@@ -494,6 +522,38 @@ export function ChatBot({ sessionId, initialCategory }: ChatBotProps) {
                         <span>{action.label}</span>
                       </button>
                     ))}
+                  </div>
+                )}
+
+                {/* Message Actions (Rerun & Copy) - Only for assistant messages */}
+                {msg.role === 'assistant' && textContent && (
+                  <div className="flex items-center gap-2 mt-3 pt-3 border-t border-gray-700/50">
+                    <button
+                      onClick={() => handleRegenerate(msg.id)}
+                      disabled={isLoading || status === 'streaming'}
+                      className="flex items-center gap-1.5 px-2 py-1.5 rounded-md text-xs text-gray-400 hover:text-white hover:bg-gray-700/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      title="Rerun message"
+                    >
+                      <RefreshCcw className="w-3.5 h-3.5" />
+                      Rerun
+                    </button>
+                    <button
+                      onClick={() => handleCopyMessage(msg.id, textContent)}
+                      className="flex items-center gap-1.5 px-2 py-1.5 rounded-md text-xs text-gray-400 hover:text-white hover:bg-gray-700/50 transition-colors"
+                      title="Copy message"
+                    >
+                      {copiedMessageId === msg.id ? (
+                        <>
+                          <Check className="w-3.5 h-3.5 text-green-400" />
+                          <span className="text-green-400">Copied</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-3.5 h-3.5" />
+                          Copy
+                        </>
+                      )}
+                    </button>
                   </div>
                 )}
 

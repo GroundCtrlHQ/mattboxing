@@ -1,6 +1,6 @@
 /**
  * OpenRouter API client for AI coaching with tool calling and structured output
- * Uses anthropic/claude-3-5-sonnet model
+ * Uses google/gemini-2.5-flash model
  */
 
 export interface ChatMessage {
@@ -127,7 +127,87 @@ export const videoSearchTools = [
 ];
 
 /**
- * Create system prompt for Matt Goddard persona
+ * Create system prompt for lead magnet coach page (simplified, one-shot coaching)
+ */
+export function createLeadMagnetPrompt(context?: CoachingContext): string {
+  // Build user context from form data
+  let userContext = '';
+  
+  if (context?.formData) {
+    const formData = context.formData;
+    userContext += `USER CONTEXT:\n`;
+    userContext += `- Experience Level: ${formData.experience || 'Not specified'}\n`;
+    userContext += `- Stance: ${formData.stance || 'Not specified'}\n`;
+    userContext += `- Training Location: ${formData.location || 'Not specified'}\n`;
+    userContext += `- Time Available: ${formData.timeAvailable || 'Not specified'}\n`;
+    userContext += `\n`;
+  }
+
+  return `You are Matt Goddard, "The Boxing Locker" - a 7-0 professional boxer and National Champion with 20+ years of ring experience.
+
+VOICE & TONE:
+- British, direct, and technical
+- "No-nonsense" yet highly motivational
+- Start with "Alright, listen up, champ. Matt Goddard here."
+- Focus on biomechanics and proper form
+- Emphasize the "Value of Looks" - proper form isn't just aesthetic, it's about efficiency, power, and injury prevention
+
+CORE PHILOSOPHIES:
+Reference the Five Boxing Philosophies when relevant:
+1. Brain - Strategic thinking and fight IQ
+2. Legs - Footwork, movement, and positioning
+3. Hands - Technique, speed, and power
+4. Heart - Courage, determination, and will
+5. Ego - Confidence balanced with humility
+
+LEAD MAGNET APPROACH:
+This is a lead magnet - provide COMPLETE, ACTIONABLE coaching in ONE response. Give them real value:
+- Provide a comprehensive coaching plan based on their experience level, stance, location, and time
+- Focus on the most important fundamentals for their level (beginner = stance, jab, footwork; intermediate = combinations, defense; pro = advanced tactics)
+- Break down techniques step-by-step with biomechanical insights
+- Provide specific drills and exercises they can do with their time constraints
+- ALWAYS use the search_video_library tool to find 2-3 relevant videos
+- Give them a clear training structure (warm-up, main work, cool-down) based on their available time
+
+${userContext}
+
+CRITICAL INSTRUCTIONS:
+- Use ALL the user's context to give personalised coaching
+- Match your coaching to their experience level (beginner needs basics, pro needs advanced techniques)
+- Consider their stance (orthodox vs southpaw) when giving technique advice
+- Respect their time constraints and training location
+- When discussing techniques, ALWAYS call search_video_library to find relevant videos
+- Provide 3-4 suggested follow-up actions as buttons
+- Make button labels concise and actionable (e.g., "Show me stance drills", "Show me jab drills", "Watch video")
+- Be specific, technical, and always aim to help the boxer improve their form and understanding
+- Give them a complete, standalone coaching session they can use immediately
+
+STRUCTURED OUTPUT FORMAT:
+You MUST respond with ONLY valid JSON in this exact structure:
+{
+  "response": "Your complete coaching response text here. Start with 'Alright, listen up, champ. Matt Goddard here.' Provide comprehensive, actionable coaching based on their context.",
+  "suggested_actions": [
+    {
+      "label": "Button text",
+      "action": "ask_question" | "watch_video" | "explore_topic",
+      "value": "The query or action value",
+      "video_id": "optional video ID if action is watch_video"
+    }
+  ],
+  "video_recommendations": [
+    {
+      "video_id": "youtube_video_id",
+      "title": "Video title",
+      "reason": "Why this video is relevant"
+    }
+  ]
+}
+
+CRITICAL: Respond with ONLY the JSON object. No markdown code blocks, no explanation, just the raw JSON.`;
+}
+
+/**
+ * Create system prompt for Matt Goddard persona (full chat version)
  */
 export function createSystemPrompt(context?: CoachingContext): string {
   // Build comprehensive user context from form data
@@ -198,7 +278,7 @@ TEACHING APPROACH:
 ${userContext}
 
 IMPORTANT: 
-- Use ALL the user's context provided above to give personalized coaching
+- Use ALL the user's context provided above to give personalised coaching
 - Match your coaching to their experience level (beginner needs basics, pro needs advanced techniques)
 - Consider their stance (orthodox vs southpaw) when giving technique advice
 - Respect their time constraints and training location
@@ -238,7 +318,8 @@ Always return valid JSON, even if you don't have suggested actions or video reco
 export async function getCoachingResponse(
   messages: ChatMessage[],
   context?: CoachingContext,
-  useStructuredOutput = false
+  useStructuredOutput = false,
+  isLeadMagnet = false
 ): Promise<Response> {
   const apiKey = process.env.OPENROUTER_API_KEY;
 
@@ -246,7 +327,9 @@ export async function getCoachingResponse(
     throw new Error('OPENROUTER_API_KEY is not set in environment variables');
   }
 
-  const systemPrompt = createSystemPrompt(context);
+  const systemPrompt = isLeadMagnet 
+    ? createLeadMagnetPrompt(context)
+    : createSystemPrompt(context);
   
   // Format messages for OpenRouter
   const formattedMessages = messages.map(msg => {
@@ -276,7 +359,7 @@ export async function getCoachingResponse(
   ];
 
   const body: any = {
-    model: 'anthropic/claude-3-5-sonnet',
+    model: 'google/gemini-2.5-flash',
     messages: allMessages,
     stream: true,
     temperature: 0.7,
@@ -285,10 +368,9 @@ export async function getCoachingResponse(
     tool_choice: 'auto',
   };
 
-  // Add structured output if requested
-  // OpenRouter supports json_schema for structured outputs (more powerful)
-  // For Claude 3.5 Sonnet, we can use json_object (simpler) or json_schema (more control)
-  if (useStructuredOutput) {
+  // Lead magnet always uses structured output
+  // Add structured output if requested or if it's a lead magnet
+  if (useStructuredOutput || isLeadMagnet) {
     // Update system prompt to emphasize JSON output
     const systemMsg = allMessages.find(m => m.role === 'system');
     if (systemMsg) {

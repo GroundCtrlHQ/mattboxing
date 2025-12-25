@@ -2,34 +2,21 @@
 
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
+import { useChat } from '@ai-sdk/react';
+import { DefaultChatTransport } from 'ai';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { VideoPlayer } from './VideoPlayer';
+import { StreamdownMarkdown } from './StreamdownMarkdown';
 import { Loader2, Sparkles } from 'lucide-react';
 
-type Category = 'Technique' | 'Tactics' | 'Training' | 'Mindset';
-
 interface CoachingFormData {
-  category: Category;
-  // Technique fields
-  technique?: 'Jab' | 'Cross' | 'Hook' | 'Uppercut' | 'Footwork' | 'Defense' | 'Guard' | 'Stance';
-  techniqueFocus?: 'Power' | 'Speed' | 'Form' | 'Range';
-  // Tactics fields
-  tacticalScenario?: 'Combination' | 'Distance' | 'Counter' | 'Angle' | 'Timing';
-  // Training fields
-  trainingType?: 'Drill' | 'Workout' | 'Conditioning' | 'Sparring';
-  // Mindset fields
-  mindsetTopic?: 'Confidence' | 'Focus' | 'Discipline' | 'Motivation';
-  // Phase 3 - Context
   location?: 'Gym' | 'Home';
-  equipment?: string[];
   timeAvailable?: '15min' | '30min' | '45min' | '1hr+';
   experience?: 'Beginner' | 'Intermediate' | 'Pro';
   stance?: 'Orthodox' | 'Southpaw' | 'Switch';
-  question?: string;
 }
 
 interface SuggestedAction {
@@ -41,7 +28,6 @@ interface SuggestedAction {
 
 interface CoachingResponse {
   response: string;
-  suggested_actions?: SuggestedAction[];
   video_recommendations?: Array<{
     video_id: string;
     title: string;
@@ -49,17 +35,92 @@ interface CoachingResponse {
   }>;
 }
 
+type LoadingStage = 
+  | 'analyzing'
+  | 'searching_videos'
+  | 'generating'
+  | 'finalizing';
+
+interface LoadingStageInfo {
+  stage: LoadingStage;
+  label: string;
+  description: string;
+}
+
+const LOADING_STAGES: LoadingStageInfo[] = [
+  {
+    stage: 'analyzing',
+    label: 'Analyzing your needs',
+    description: 'Reviewing your experience level, stance, and training context...',
+  },
+  {
+    stage: 'searching_videos',
+    label: 'Finding relevant videos',
+    description: 'Searching Matt\'s video library for perfect demonstrations...',
+  },
+  {
+    stage: 'generating',
+    label: 'Generating coaching plan',
+    description: 'Creating your personalised training program...',
+  },
+  {
+    stage: 'finalizing',
+    label: 'Finalizing your coaching',
+    description: 'Putting the finishing touches on your plan...',
+  },
+];
+
 export function CoachingForm() {
-  const [phase, setPhase] = useState<1 | 2 | 3>(1);
-  const [isLoading, setIsLoading] = useState(false);
-  const [aiResponse, setAiResponse] = useState('');
+  const [loadingStage, setLoadingStage] = useState<LoadingStage>('analyzing');
   const [parsedResponse, setParsedResponse] = useState<CoachingResponse | null>(null);
   const [selectedVideo, setSelectedVideo] = useState<{ videoId: string; title: string; topic?: string; subtopic?: string } | null>(null);
-  const [isPlayerOpen, setIsPlayerOpen] = useState(false);
+
+  // Parse text and JSON from message parts (like ChatBot does)
+function parseCoachingResponse(parts: any[]): {
+  text: string;
+  response: CoachingResponse | null;
+} {
+  if (!parts) return { text: '', response: null };
+
+  const rawText = parts
+    .filter(p => p.type === 'text')
+    .map(p => p.text)
+    .join('');
+
+  // Try to extract JSON block from the end of the response
+  const jsonMatch = rawText.match(/```json\s*([\s\S]*?)\s*```/);
+
+  let response: CoachingResponse | null = null;
+  let cleanText = rawText;
+
+  if (jsonMatch) {
+    try {
+      const parsed = JSON.parse(jsonMatch[1]);
+
+      // Parse coaching response
+      if (parsed.response) {
+        response = {
+          response: parsed.response,
+          video_recommendations: parsed.video_recommendations || [],
+        };
+      }
+
+      // Remove JSON block from displayed text
+      cleanText = rawText.replace(/```json[\s\S]*?```/, '').trim();
+    } catch (e) {
+      console.error('[Coach] Failed to parse JSON from response:', e);
+    }
+  }
+
+  return { text: cleanText, response };
+}
+
+// State for manual streaming (since useChat with dynamic body is complex)
+const [isLoadingManual, setIsLoadingManual] = useState(false);
+const [messages, setMessages] = useState<any[]>([]);
 
   const { register, handleSubmit, watch, setValue, formState: { errors } } = useForm<CoachingFormData>({
     defaultValues: {
-      category: 'Technique',
       location: 'Gym',
       timeAvailable: '30min',
       experience: 'Beginner',
@@ -67,16 +128,29 @@ export function CoachingForm() {
     },
   });
 
-  const category = watch('category');
+  // Track loading stages based on messages
+  const lastMessage = messages[messages.length - 1];
+  if (lastMessage) {
+    // Check for tool calls to update stage
+    const hasToolCalls = lastMessage.parts?.some((p: any) => p.type === 'tool-call');
+    const hasText = lastMessage.parts?.some((p: any) => p.type === 'text');
+    
+    if (hasToolCalls && loadingStage === 'analyzing') {
+      setLoadingStage('searching_videos');
+    } else if (hasText && loadingStage !== 'generating') {
+      setLoadingStage('generating');
+    }
+  }
 
   const onSubmit = async (data: CoachingFormData) => {
-    setIsLoading(true);
-    setAiResponse('');
+    setIsLoadingManual(true);
+    setLoadingStage('analyzing');
     setParsedResponse(null);
+    setMessages([]);
 
     try {
-      // Build coaching prompt from form data
-      const prompt = buildCoachingPrompt(data);
+      // Build simple coaching prompt for lead magnet
+      const prompt = `I'm a ${data.experience || 'Beginner'} boxer with an ${data.stance || 'Orthodox'} stance. I train at ${data.location || 'Gym'} and have ${data.timeAvailable || '30 minutes'} available. Please provide personalised coaching based on my needs.`;
 
       const response = await fetch('/api/coach', {
         method: 'POST',
@@ -89,61 +163,25 @@ export function CoachingForm() {
             },
           ],
           context: {
-            category: data.category,
             formData: {
-              category: data.category,
-              technique: data.technique,
-              techniqueFocus: data.techniqueFocus,
-              tacticalScenario: data.tacticalScenario,
-              trainingType: data.trainingType,
-              mindsetTopic: data.mindsetTopic,
               location: data.location,
-              equipment: data.equipment,
               timeAvailable: data.timeAvailable,
               experience: data.experience,
               stance: data.stance,
-              question: data.question,
             },
             userProfile: {
               stance: data.stance,
               experience: data.experience,
             },
           },
+          isLeadMagnet: true,
         }),
       });
 
       if (!response.ok) {
-        // Try to parse error message from JSON response
-        let errorMessage = 'Failed to get coaching response';
-        try {
-          const errorData = await response.json();
-          errorMessage = errorData.error || errorMessage;
-        } catch {
-          // If not JSON, try to get text
-          try {
-            errorMessage = await response.text() || errorMessage;
-          } catch {
-            errorMessage = `Server error: ${response.status} ${response.statusText}`;
-          }
-        }
-        throw new Error(errorMessage);
+        throw new Error(`API error: ${response.status}`);
       }
 
-      // Check if response is actually a stream
-      const contentType = response.headers.get('content-type');
-      if (!contentType?.includes('text/event-stream')) {
-        // If not a stream, try to parse as JSON
-        try {
-          const jsonData = await response.json();
-          if (jsonData.error) {
-            throw new Error(jsonData.error);
-          }
-        } catch (e) {
-          throw new Error('Unexpected response format from server');
-        }
-      }
-
-      // Stream the response
       const reader = response.body?.getReader();
       const decoder = new TextDecoder();
 
@@ -151,552 +189,277 @@ export function CoachingForm() {
         throw new Error('No response body');
       }
 
-      let fullResponse = '';
       let buffer = '';
-      let foundVideos: any[] = [];
-      let streamComplete = false;
+      let fullResponse = '';
 
       while (true) {
         const { done, value } = await reader.read();
-        if (done) {
-          streamComplete = true;
-          break;
-        }
+        if (done) break;
 
         buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split('\n');
         buffer = lines.pop() || '';
 
         for (const line of lines) {
+          if (line.trim() === '' || line.trim() === ': OPENROUTER PROCESSING' || line.trim().startsWith(': OPENROUTER')) {
+            continue;
+          }
+
           if (line.startsWith('data: ')) {
             const data = line.slice(6).trim();
-            if (data === '[DONE]') {
-              // Stream complete
-              continue;
-            }
+            if (data === '[DONE]' || data === '') continue;
 
             try {
               const parsed = JSON.parse(data);
-              
-              // Check for tool videos (from tool calls)
-              if (parsed.tool_videos && Array.isArray(parsed.tool_videos)) {
-                foundVideos = [...foundVideos, ...parsed.tool_videos];
+
+              // Debug: Log all event types we receive
+              console.log('[Coach Stream]', parsed.type, parsed);
+
+              // Handle text-delta (AI SDK format uses 'delta' not 'textDelta')
+              if (parsed.type === 'text-delta') {
+                const delta = parsed.delta || parsed.textDelta || '';
+                if (delta) {
+                  fullResponse += delta;
+                  console.log('[Coach] Received text-delta, total length:', fullResponse.length);
+                  setMessages([{
+                    id: '1',
+                    role: 'assistant',
+                    parts: [{ type: 'text', text: fullResponse }],
+                    createdAt: new Date().toISOString(),
+                  }]);
+                }
               }
 
-              // Handle content - check multiple possible formats
-              const content = parsed.choices?.[0]?.delta?.content || 
-                             parsed.choices?.[0]?.message?.content ||
-                             parsed.text ||
-                             parsed.content ||
-                             '';
-              if (content) {
-                fullResponse += content;
-                // Update UI in real-time as content streams
-                setAiResponse(fullResponse);
+              // Handle other text events that might come from AI SDK
+              if (parsed.type === 'text') {
+                const text = parsed.text || '';
+                if (text) {
+                  fullResponse += text;
+                  console.log('[Coach] Received text event, total length:', fullResponse.length);
+                  setMessages([{
+                    id: '1',
+                    role: 'assistant',
+                    parts: [{ type: 'text', text: fullResponse }],
+                    createdAt: new Date().toISOString(),
+                  }]);
+                }
+              }
+
+              // Update loading stages
+              if (parsed.type === 'tool-input-start') {
+                setLoadingStage('searching_videos');
+              }
+              if (parsed.type === 'text-delta' || parsed.type === 'text') {
+                setLoadingStage('generating');
               }
             } catch (e) {
-              // If it's not valid JSON, it might be plain text content
-              // Skip lines that aren't valid JSON
-            }
-          } else if (line.trim() && !line.startsWith('data:')) {
-            // Handle non-SSE format lines (shouldn't happen but just in case)
-            const trimmed = line.trim();
-            if (trimmed && !trimmed.startsWith('data:')) {
-              fullResponse += trimmed + '\n';
-              setAiResponse(fullResponse);
+              // Skip invalid JSON
+              console.log('[Coach Stream] Invalid JSON:', data);
             }
           }
         }
       }
 
-      // After streaming completes, ensure we have the full response
-      // Process any remaining buffer content
-      if (buffer.trim()) {
-        try {
-          const parsed = JSON.parse(buffer.trim());
-          const content = parsed.choices?.[0]?.delta?.content || 
-                         parsed.choices?.[0]?.message?.content ||
-                         parsed.text ||
-                         parsed.content ||
-                         '';
-          if (content) {
-            fullResponse += content;
-          }
-        } catch {
-          // Buffer might not be complete JSON, add as text if it looks like content
-          if (buffer.trim() && !buffer.trim().startsWith('data:')) {
-            fullResponse += buffer.trim();
-          }
-        }
-      }
+      console.log('[Coach] Stream complete, fullResponse length:', fullResponse.length);
       
-      const trimmedResponse = fullResponse.trim();
-      
-      // Always ensure the full response is displayed
-      if (trimmedResponse) {
-        setAiResponse(trimmedResponse);
+      // Ensure we have the final message set
+      if (fullResponse) {
+        setMessages([{
+          id: '1',
+          role: 'assistant',
+          parts: [{ type: 'text', text: fullResponse }],
+          createdAt: new Date().toISOString(),
+        }]);
       }
-      
-      // Only try to parse as JSON if the response looks like it contains JSON
-      if (trimmedResponse.includes('{') && trimmedResponse.includes('}')) {
-        // Try to find JSON object in the response (might be wrapped in markdown code blocks or plain)
-        let jsonString = trimmedResponse;
-        
-        // Check if it's wrapped in markdown code blocks
-        const codeBlockMatch = trimmedResponse.match(/```(?:json)?\s*(\{[\s\S]*\})\s*```/);
-        if (codeBlockMatch) {
-          jsonString = codeBlockMatch[1];
-        } else {
-          // Try to find JSON object directly - get the last complete JSON object
-          const jsonMatches = trimmedResponse.match(/\{[\s\S]*\}/g);
-          if (jsonMatches && jsonMatches.length > 0) {
-            // Use the last (most complete) JSON match
-            jsonString = jsonMatches[jsonMatches.length - 1];
-          }
-        }
-        
-        try {
-          const jsonResponse: CoachingResponse = JSON.parse(jsonString);
-          if (jsonResponse.response) {
-            setParsedResponse(jsonResponse);
-            setAiResponse(jsonResponse.response);
-          }
-        } catch (e) {
-          // If JSON parsing fails, the response might be plain text with JSON at the end
-          // Try to extract just the JSON part more carefully
-          const lastBraceIndex = trimmedResponse.lastIndexOf('}');
-          if (lastBraceIndex > 0) {
-            const potentialJson = trimmedResponse.substring(
-              trimmedResponse.lastIndexOf('{', lastBraceIndex),
-              lastBraceIndex + 1
-            );
-            try {
-              const jsonResponse: CoachingResponse = JSON.parse(potentialJson);
-              if (jsonResponse.response) {
-                setParsedResponse(jsonResponse);
-                setAiResponse(jsonResponse.response);
-              }
-            } catch {
-              // If still not JSON, keep the raw response as-is
-              // The response is already set above
-            }
-          }
-        }
-      }
-      // If no JSON found, the response is already set to fullResponse above
 
-      // Show videos from tool calls (AI searched the library)
-      if (foundVideos.length > 0) {
-        const video = foundVideos[0];
-        setSelectedVideo({
-          videoId: video.video_id,
-          title: video.title,
-          topic: video.topic,
-          subtopic: video.subtopic,
-        });
+      // Parse final response
+      const { response: parsedResponse } = parseCoachingResponse([{ type: 'text', text: fullResponse }]);
+      if (parsedResponse) {
+        console.log('[Coach] Parsed response successfully:', parsedResponse);
+        setParsedResponse(parsedResponse);
+
+        // Set video from recommendations if available
+        if (parsedResponse.video_recommendations && parsedResponse.video_recommendations.length > 0) {
+          const video = parsedResponse.video_recommendations[0];
+          setSelectedVideo({
+            videoId: video.video_id,
+            title: video.title,
+          });
+        }
       } else {
-        // Fallback: extract video references from text
-        const videoRefs = extractVideoReferences(fullResponse);
-        if (videoRefs.length > 0) {
-          // Fetch video details by ID
-          const videoRes = await fetch(`/api/videos/${videoRefs[0].videoId}`);
-          if (videoRes.ok) {
-            const videoData = await videoRes.json();
-            if (videoData.video) {
-              setSelectedVideo({
-                videoId: videoData.video.video_id,
-                title: videoData.video.video_title,
-                topic: videoData.video.topic,
-                subtopic: videoData.video.subtopic,
-              });
-            }
-          }
-        }
+        console.log('[Coach] No parsed response, showing raw text');
       }
+
     } catch (error: any) {
       console.error('Coaching error:', error);
-      setAiResponse(`Error: ${error.message}`);
+      setMessages([{
+        id: '1',
+        role: 'assistant',
+        parts: [{ type: 'text', text: `Error: ${error.message}` }],
+        createdAt: new Date().toISOString(),
+      }]);
     } finally {
-      setIsLoading(false);
+      setIsLoadingManual(false);
     }
-  };
-
-  const buildCoachingPrompt = (data: CoachingFormData): string => {
-    let prompt = `I need personalized boxing coaching from Matt Goddard. Here are my details:\n\n`;
-
-    // Category and specific focus
-    prompt += `**What I want to work on:** ${data.category}\n`;
-    
-    if (data.category === 'Technique') {
-      if (data.technique && data.techniqueFocus) {
-        prompt += `- Specific technique: ${data.technique}\n`;
-        prompt += `- Focus area: ${data.techniqueFocus}\n`;
-      } else {
-        prompt += `- I haven't specified a particular technique yet, but I want to work on ${data.category.toLowerCase()}.\n`;
-        prompt += `- Please help me understand what techniques would be most beneficial for my level.\n`;
-      }
-    } else if (data.category === 'Tactics') {
-      if (data.tacticalScenario) {
-        prompt += `- Tactical scenario: ${data.tacticalScenario}\n`;
-      } else {
-        prompt += `- I want to improve my tactical understanding but haven't specified a particular scenario yet.\n`;
-      }
-    } else if (data.category === 'Training') {
-      if (data.trainingType) {
-        prompt += `- Training type: ${data.trainingType}\n`;
-      } else {
-        prompt += `- I want training guidance but haven't specified a particular type yet.\n`;
-      }
-    } else if (data.category === 'Mindset') {
-      if (data.mindsetTopic) {
-        prompt += `- Mindset topic: ${data.mindsetTopic}\n`;
-      } else {
-        prompt += `- I want to work on my mindset but haven't specified a particular topic yet.\n`;
-      }
-    }
-
-    // User profile
-    prompt += `\n**My profile:**\n`;
-    prompt += `- Experience level: ${data.experience || 'Not specified'}\n`;
-    prompt += `- Stance: ${data.stance || 'Not specified'}\n`;
-    prompt += `- Training location: ${data.location || 'Not specified'}\n`;
-    prompt += `- Time available: ${data.timeAvailable || 'Not specified'}\n`;
-
-    // Equipment if specified
-    if (data.equipment && data.equipment.length > 0) {
-      prompt += `- Equipment available: ${data.equipment.join(', ')}\n`;
-    }
-
-    // Specific question if provided
-    if (data.question) {
-      prompt += `\n**My specific question:** ${data.question}\n`;
-    }
-
-    prompt += `\nPlease provide comprehensive, personalized coaching based on ALL this information. `;
-    prompt += `If I haven't specified a particular technique/topic, please suggest the most important areas for my experience level (${data.experience}) and provide specific guidance. `;
-    prompt += `Include specific drills, techniques, and video recommendations that match my experience level and available time (${data.timeAvailable}). `;
-    prompt += `Consider my stance (${data.stance}) when giving technique advice.`;
-
-    return prompt;
-  };
-
-  const extractVideoReferences = (text: string): Array<{ videoId: string; timestamp?: number }> => {
-    const pattern = /\[([a-zA-Z0-9_-]{11})\](?:\s*at\s*(\d+))?/gi;
-    const matches = [...text.matchAll(pattern)];
-    return matches.map(match => ({
-      videoId: match[1],
-      timestamp: match[2] ? parseInt(match[2]) : undefined,
-    }));
   };
 
   return (
     <div className="space-y-6">
-      {/* Progress Indicator */}
-      <div className="flex items-center justify-center gap-2 mb-8">
-        {[1, 2, 3].map((p) => (
-          <div key={p} className="flex items-center gap-2">
-            <div
-              className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold ${
-                phase >= p
-                  ? 'bg-boxing-red text-white'
-                  : 'bg-gray-800 text-gray-400'
-              }`}
-            >
-              {p}
-            </div>
-            {p < 3 && (
-              <div
-                className={`h-1 w-8 sm:w-12 ${
-                  phase > p ? 'bg-boxing-red' : 'bg-gray-800'
-                }`}
-              />
-            )}
-          </div>
-        ))}
-      </div>
-
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-        {/* Phase 1: Category Selection */}
-        {phase === 1 && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-xl sm:text-2xl">What do you want to work on?</CardTitle>
-              <CardDescription>Select the main area you'd like coaching on</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <Tabs
-                value={category}
-                onValueChange={(value) => setValue('category', value as Category)}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-xl sm:text-2xl">Your context</CardTitle>
+            <CardDescription>Help me personalize your coaching</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Your experience level</Label>
+                <Select
+                  value={watch('experience')}
+                  onValueChange={(value) => setValue('experience', value as any)}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Beginner">Beginner</SelectItem>
+                    <SelectItem value="Intermediate">Intermediate</SelectItem>
+                    <SelectItem value="Pro">Pro</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Your stance</Label>
+                <Select
+                  value={watch('stance')}
+                  onValueChange={(value) => setValue('stance', value as any)}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Orthodox">Orthodox</SelectItem>
+                    <SelectItem value="Southpaw">Southpaw</SelectItem>
+                    <SelectItem value="Switch">Switch</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Where do you train?</Label>
+                <Select
+                  value={watch('location')}
+                  onValueChange={(value) => setValue('location', value as any)}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Gym">Gym</SelectItem>
+                    <SelectItem value="Home">Home</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Time available</Label>
+                <Select
+                  value={watch('timeAvailable')}
+                  onValueChange={(value) => setValue('timeAvailable', value as any)}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="15min">15 minutes</SelectItem>
+                    <SelectItem value="30min">30 minutes</SelectItem>
+                    <SelectItem value="45min">45 minutes</SelectItem>
+                    <SelectItem value="1hr+">1 hour+</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="pt-4">
+              <Button
+                type="submit"
+                disabled={isLoadingManual}
                 className="w-full"
               >
-                <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4 mb-6">
-                  <TabsTrigger value="Technique">Technique</TabsTrigger>
-                  <TabsTrigger value="Tactics">Tactics</TabsTrigger>
-                  <TabsTrigger value="Training">Training</TabsTrigger>
-                  <TabsTrigger value="Mindset">Mindset</TabsTrigger>
-                </TabsList>
-              </Tabs>
-
-              <div className="flex gap-4">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setPhase(2)}
-                  className="flex-1"
-                >
-                  Next: Details
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Phase 2: Granular Details */}
-        {phase === 2 && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-xl sm:text-2xl">Tell me more</CardTitle>
-              <CardDescription>Provide specific details about what you want to learn</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {category === 'Technique' && (
-                <>
-                  <div className="space-y-2">
-                    <Label>Which technique?</Label>
-                    <Select
-                      value={watch('technique')}
-                      onValueChange={(value) => setValue('technique', value as any)}
-                    >
-                      <SelectTrigger className="w-full">
-                        <SelectValue placeholder="Select technique" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Jab">Jab</SelectItem>
-                        <SelectItem value="Cross">Cross</SelectItem>
-                        <SelectItem value="Hook">Hook</SelectItem>
-                        <SelectItem value="Uppercut">Uppercut</SelectItem>
-                        <SelectItem value="Footwork">Footwork</SelectItem>
-                        <SelectItem value="Defense">Defense</SelectItem>
-                        <SelectItem value="Guard">Guard</SelectItem>
-                        <SelectItem value="Stance">Stance</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label>What's your focus?</Label>
-                    <Select
-                      value={watch('techniqueFocus')}
-                      onValueChange={(value) => setValue('techniqueFocus', value as any)}
-                    >
-                      <SelectTrigger className="w-full">
-                        <SelectValue placeholder="Select focus" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Power">Power</SelectItem>
-                        <SelectItem value="Speed">Speed</SelectItem>
-                        <SelectItem value="Form">Form</SelectItem>
-                        <SelectItem value="Range">Range</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </>
-              )}
-
-              {category === 'Tactics' && (
-                <div className="space-y-2">
-                  <Label>Tactical scenario</Label>
-                  <Select
-                    value={watch('tacticalScenario')}
-                    onValueChange={(value) => setValue('tacticalScenario', value as any)}
-                  >
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Select scenario" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Combination">Combinations</SelectItem>
-                      <SelectItem value="Distance">Distance Management</SelectItem>
-                      <SelectItem value="Counter">Counter-punching</SelectItem>
-                      <SelectItem value="Angle">Angles & Positioning</SelectItem>
-                      <SelectItem value="Timing">Timing & Rhythm</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
-
-              {category === 'Training' && (
-                <div className="space-y-2">
-                  <Label>Training type</Label>
-                  <Select
-                    value={watch('trainingType')}
-                    onValueChange={(value) => setValue('trainingType', value as any)}
-                  >
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Select type" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Drill">Drills</SelectItem>
-                      <SelectItem value="Workout">Workout Routine</SelectItem>
-                      <SelectItem value="Conditioning">Conditioning</SelectItem>
-                      <SelectItem value="Sparring">Sparring</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
-
-              {category === 'Mindset' && (
-                <div className="space-y-2">
-                  <Label>Mindset topic</Label>
-                  <Select
-                    value={watch('mindsetTopic')}
-                    onValueChange={(value) => setValue('mindsetTopic', value as any)}
-                  >
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Select topic" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Confidence">Confidence</SelectItem>
-                      <SelectItem value="Focus">Focus & Concentration</SelectItem>
-                      <SelectItem value="Discipline">Discipline</SelectItem>
-                      <SelectItem value="Motivation">Motivation</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
-
-              <div className="flex gap-4 pt-4">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setPhase(1)}
-                  className="flex-1"
-                >
-                  Back
-                </Button>
-                <Button
-                  type="button"
-                  onClick={() => setPhase(3)}
-                  className="flex-1"
-                >
-                  Next: Context
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Phase 3: Context & Submit */}
-        {phase === 3 && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-xl sm:text-2xl">Your context</CardTitle>
-              <CardDescription>Help me personalize your coaching</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Your experience level</Label>
-                  <Select
-                    value={watch('experience')}
-                    onValueChange={(value) => setValue('experience', value as any)}
-                  >
-                    <SelectTrigger className="w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Beginner">Beginner</SelectItem>
-                      <SelectItem value="Intermediate">Intermediate</SelectItem>
-                      <SelectItem value="Pro">Pro</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Your stance</Label>
-                  <Select
-                    value={watch('stance')}
-                    onValueChange={(value) => setValue('stance', value as any)}
-                  >
-                    <SelectTrigger className="w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Orthodox">Orthodox</SelectItem>
-                      <SelectItem value="Southpaw">Southpaw</SelectItem>
-                      <SelectItem value="Switch">Switch</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Where do you train?</Label>
-                  <Select
-                    value={watch('location')}
-                    onValueChange={(value) => setValue('location', value as any)}
-                  >
-                    <SelectTrigger className="w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Gym">Gym</SelectItem>
-                      <SelectItem value="Home">Home</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Time available</Label>
-                  <Select
-                    value={watch('timeAvailable')}
-                    onValueChange={(value) => setValue('timeAvailable', value as any)}
-                  >
-                    <SelectTrigger className="w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="15min">15 minutes</SelectItem>
-                      <SelectItem value="30min">30 minutes</SelectItem>
-                      <SelectItem value="45min">45 minutes</SelectItem>
-                      <SelectItem value="1hr+">1 hour+</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              <div className="flex gap-4 pt-4">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setPhase(2)}
-                  className="flex-1"
-                >
-                  Back
-                </Button>
-                <Button
-                  type="submit"
-                  disabled={isLoading}
-                  className="flex-1"
-                >
-                  {isLoading ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Getting coaching...
-                    </>
-                  ) : (
-                    <>
-                      <Sparkles className="mr-2 h-4 w-4" />
-                      Get AI Coaching
-                    </>
-                  )}
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        )}
+                {isLoadingManual ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Getting coaching...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="mr-2 h-4 w-4" />
+                    Get AI Coaching
+                  </>
+                )}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
       </form>
 
+      {/* Loading Indicator with Stages */}
+      {isLoadingManual && messages.length === 0 && (
+        <Card className="mt-6">
+          <CardContent className="py-12">
+            <div className="flex flex-col items-center justify-center space-y-6">
+              <Loader2 className="w-12 h-12 animate-spin text-boxing-red" />
+              
+              <div className="text-center space-y-2">
+                <h3 className="text-lg font-semibold text-white">
+                  {LOADING_STAGES.find(s => s.stage === loadingStage)?.label || 'Preparing your coaching...'}
+                </h3>
+                <p className="text-sm text-gray-400">
+                  {LOADING_STAGES.find(s => s.stage === loadingStage)?.description || 'This will just take a moment...'}
+                </p>
+              </div>
+
+              {/* Stage Progress Indicator */}
+              <div className="w-full max-w-md space-y-3">
+                {LOADING_STAGES.map((stageInfo, index) => {
+                  const currentStageIndex = LOADING_STAGES.findIndex(s => s.stage === loadingStage);
+                  const isActive = stageInfo.stage === loadingStage;
+                  const isCompleted = currentStageIndex > index;
+                  
+                  return (
+                    <div key={stageInfo.stage} className="flex items-center gap-3">
+                      <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold transition-all ${
+                        isCompleted
+                          ? 'bg-boxing-red text-white'
+                          : isActive
+                          ? 'bg-boxing-red/50 text-white border-2 border-boxing-red animate-pulse'
+                          : 'bg-gray-800 text-gray-400'
+                      }`}>
+                        {isCompleted ? '✓' : index + 1}
+                      </div>
+                      <div className="flex-1">
+                        <p className={`text-sm font-medium ${
+                          isActive ? 'text-white' : isCompleted ? 'text-gray-300' : 'text-gray-500'
+                        }`}>
+                          {stageInfo.label}
+                        </p>
+                        {isActive && (
+                          <p className="text-xs text-gray-400 mt-0.5">{stageInfo.description}</p>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* AI Response */}
-      {aiResponse && (
+      {(messages.length > 0 && messages[messages.length - 1]?.role === 'assistant') && (
         <Card className="mt-6">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -706,42 +469,26 @@ export function CoachingForm() {
           </CardHeader>
           <CardContent className="space-y-6">
             {/* Main Response Text */}
-            <div className="prose prose-invert max-w-none text-gray-300 whitespace-pre-wrap leading-relaxed">
-              {parsedResponse?.response || aiResponse}
-            </div>
+            <div className="prose prose-invert max-w-none text-gray-300 leading-relaxed">
+              {(() => {
+                const assistantMessage = messages[messages.length - 1];
+                if (!assistantMessage) return null;
 
-            {/* Suggested Actions */}
-            {parsedResponse?.suggested_actions && parsedResponse.suggested_actions.length > 0 && (
-              <div className="pt-4 border-t border-gray-800">
-                <h3 className="text-sm font-semibold mb-3 text-gray-400 uppercase tracking-wide">
-                  Suggested Next Steps
-                </h3>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {parsedResponse.suggested_actions.map((action, idx) => (
-                    <Button
-                      key={idx}
-                      variant="outline"
-                      className="justify-start text-left h-auto py-3 px-4 hover:bg-gray-800 hover:border-boxing-red transition-colors"
-                      onClick={() => {
-                        // Handle action click - could trigger a new query or navigate
-                        if (action.action === 'watch_video' && action.video_id) {
-                          setSelectedVideo({
-                            videoId: action.video_id,
-                            title: action.label,
-                          });
-                          setIsPlayerOpen(true);
-                        } else {
-                          // For explore_topic or ask_question, could pre-fill the form or show in chat
-                          setAiResponse(`Follow-up: ${action.value}\n\n${aiResponse}`);
-                        }
-                      }}
-                    >
-                      <span className="text-sm">{action.label}</span>
-                    </Button>
-                  ))}
-                </div>
-              </div>
-            )}
+                // Parse response using the same method as ChatBot
+                const { text, response } = parseCoachingResponse(assistantMessage.parts);
+
+                // Set parsed response if found
+                if (response && !parsedResponse) {
+                  setParsedResponse(response);
+                }
+
+                // Use parsed response if available, otherwise show text
+                const contentToRender = parsedResponse?.response || text || 'No response received';
+                
+                // Use Streamdown for markdown rendering
+                return <StreamdownMarkdown content={contentToRender} />;
+              })()}
+            </div>
 
             {/* Video Recommendations */}
             {parsedResponse?.video_recommendations && parsedResponse.video_recommendations.length > 0 && (
@@ -759,7 +506,6 @@ export function CoachingForm() {
                           videoId: video.video_id,
                           title: video.title,
                         });
-                        setIsPlayerOpen(true);
                       }}
                     >
                       <div className="flex-1 min-w-0">
@@ -788,7 +534,9 @@ export function CoachingForm() {
                   Watch Matt Demonstrate
                 </h3>
                 <Button
-                  onClick={() => setIsPlayerOpen(true)}
+                  onClick={() => {
+                    // Video player will auto-open when selectedVideo is set
+                  }}
                   variant="outline"
                   className="w-full sm:w-auto"
                 >
@@ -800,15 +548,19 @@ export function CoachingForm() {
         </Card>
       )}
 
-      {/* Video Player Modal */}
+      {/* Video Player Modal - Auto-open like chat app */}
       {selectedVideo && (
         <VideoPlayer
           videoId={selectedVideo.videoId}
           title={selectedVideo.title}
           topic={selectedVideo.topic}
           subtopic={selectedVideo.subtopic}
-          open={isPlayerOpen}
-          onOpenChange={setIsPlayerOpen}
+          open={!!selectedVideo}
+          onOpenChange={(open) => {
+            if (!open) {
+              setSelectedVideo(null);
+            }
+          }}
         />
       )}
     </div>
