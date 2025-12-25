@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
-import { streamText, convertToModelMessages } from 'ai';
+import { streamText } from 'ai';
 import { createLeadMagnetPrompt, type CoachingContext } from '@/lib/openrouter';
 import { searchVideos } from '@/lib/video-search';
 
@@ -48,13 +48,11 @@ export async function POST(request: NextRequest) {
     // Handle both useChat format (with parts) and direct format (with content)
     let modelMessages;
     if (messages && messages.length > 0) {
-      // Convert useChat format to ModelMessage
-      modelMessages = await convertToModelMessages(
-        messages.map(msg => ({
-          role: msg.role as 'user' | 'assistant' | 'system',
-          parts: msg.parts || (msg.content ? [{ type: 'text' as const, text: msg.content }] : []),
-        }))
-      );
+      // Convert to simple CoreMessage format for streamText
+      modelMessages = messages.map(msg => ({
+        role: msg.role as 'user' | 'assistant' | 'system',
+        content: msg.content || (msg.parts?.find(p => p.type === 'text')?.text) || '',
+      }));
     } else {
       return NextResponse.json(
         { error: 'Messages are required' },
